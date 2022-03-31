@@ -1,0 +1,99 @@
+from peewee import *
+from datetime import date
+
+
+db = SqliteDatabase('people.db')
+
+class Person(Model):
+    name = CharField()
+    birthday = DateField()
+
+    class Meta:
+        database = db
+
+
+class Pet(Model):
+    owner = ForeignKeyField(Person, backref='pets')
+    name = CharField()
+    animal_type = CharField()
+
+    class Meta:
+        database = db # this model uses the "people.db" database
+
+
+db.connect()
+db.create_tables([Person, Pet])
+
+grandma = Person.create(name='Grandma', birthday=date(1935, 3, 1))
+herb = Person.create(name='Herb', birthday=date(1950, 5, 5))
+
+grandma.name = 'Grandma L.'
+grandma.save()  # Update grandma's name in the database.
+# Returns: 1
+
+bob_kitty = Pet.create(owner=uncle_bob, name='Kitty', animal_type='cat')
+herb_fido = Pet.create(owner=herb, name='Fido', animal_type='dog')
+herb_mittens = Pet.create(owner=herb, name='Mittens', animal_type='cat')
+herb_mittens_jr = Pet.create(owner=herb, name='Mittens Jr', animal_type='cat')
+
+herb_mittens.delete_instance() # we deleted herb_mittens
+# Returns: 1
+
+herb_fido.owner = uncle_bob #we have reassigned Fido's pet to Bob
+herb_fido.save()
+
+#this is how get one person
+grandma = Person.select().where(Person.name == 'Grandma L.').get()
+
+grandma = Person.get(Person.name == 'Grandma L.') #the select.get can be writte like this
+
+for person in Person.select():
+    print(person.name)
+#this is how you list the people in the database
+# prints:
+# Bob
+# Grandma L.
+# Herb
+
+#this is how get the list of all cats and their owners
+query = Pet.select().where(Pet.animal_type == 'cat')
+for pet in query:
+    print(pet.name, pet.owner.name)
+
+# prints:
+# Kitty Bob
+# Mittens Jr Herb
+
+
+#the relationship between the two Model Classes is best querried this way
+query = (Pet
+         .select(Pet, Person)
+         .join(Person)
+         .where(Pet.animal_type == 'cat'))
+
+for pet in query:
+    print(pet.name, pet.owner.name)
+
+# prints:
+# Kitty Bob
+# Mittens Jr Herb
+
+#this is how we get all the pets owned by bob
+for pet in Pet.select().join(Person).where(Person.name == 'Bob'):
+    print(pet.name)
+
+# prints:
+# Kitty
+# Fido
+
+#this can used to get pets owned by bob
+for pet in Pet.select().where(Pet.owner == uncle_bob):
+    print(pet.name)
+
+#sorting pet name
+for pet in Pet.select().where(Pet.owner == uncle_bob).order_by(Pet.name):
+    print(pet.name)
+
+# prints:
+# Fido
+# Kitty
