@@ -13,42 +13,44 @@ from model import *
 app = Flask(__name__)
 app.config['JWT_SECRET_KEY'] = 'owoicanbe444sunkami_5#y2L"F4Q8z\n\xec]/'
 jwt = JWTManager(app)
+# DB setup using MYSQLAlchemy
+# app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymsql://root:Sunk@nmi84!@@localhost/more_recipe'
+
 
 
 @app.before_request
-def before_request():
-    initialize_db()
+def _db_connect():
+    db.connect()
 
-@app.after_request
-def after_request(exception):
-    db.close()
-
-@app.route('/home')
-def index():
-    return 'You are not logged in'
+# This hook ensures that the connection is closed when we've finished
+# processing the request.
+@app.teardown_request
+def _db_close(exc):
+    if not db.is_closed():
+        db.close()
 
 @app.route('/register', methods=['POST', 'GET'])
 def register():
 
     if request.method == 'POST':
-        full_name = request.form['full_name']
-        user_name = request.form['user_name']
+        fullname = request.form['fullname']
+        username = request.form['username']
         email = request.form['email']
         password_harsh = request.form['password']
         birthday = request.form['birthday']
         gender = request.form['gender']
-        if not user_name:
-            return jsonify('Missing user_name')
+        if not username:
+            return jsonify('Missing username')
         if not password_harsh:
             return jsonify('Missing password')
         if not email:
             return jsonify('Missing email')
-        registered_user = Users.select(Users.user_name).where(Users.user_name == user_name ).count()
+        registered_user = Users.select(Users.username).where(Users.username == username ).count()
         if registered_user:
             return jsonify('User Already Exists'), 400  
         hashed_pw = generate_password_hash(password_harsh, "sha256")
-        user= Users.create(full_name = full_name,user_name=user_name, email=email, password_harsh= hashed_pw,birthday=birthday,gender=gender)
-        access_token = create_access_token(identity={'user_name':user_name})
+        user= Users.create(fullname = fullname,username=username, email=email, password_harsh= hashed_pw,birthday=birthday,gender=gender)
+        access_token = create_access_token(identity={'username':username})
         return {"access_token": access_token} , 200
 
     return jsonify('Please enter your detail'), 400  
@@ -69,19 +71,19 @@ def profile_page():
 def login():
    if request.method == 'POST' :
         
-            user_name = request.form['user_name']
+            username = request.form['username']
             password = request.form['password']
-            if not user_name:
+            if not username:
                 return jsonify('Mission username'), 400
 
             if not password:
                 return jsonify('Missing password'), 400
-            registered_user = Users.get(Users.user_name == user_name)
+            registered_user = Users.get(Users.username == username)
             password_pass =  check_password_hash(registered_user.password_harsh, password)  
             if registered_user:     
                 
                 if password_pass:
-                    access_token = create_access_token(identity={'user_name':user_name})
+                    access_token = create_access_token(identity={'username':username})
                     return {"access_token": access_token} , 200
                     
             
@@ -96,7 +98,7 @@ def login():
 @app.route('/users', methods=['GET'])
 @jwt_required()
 def get_users():
-    users = Users.select(Users.user_name, Users.full_name, Users.gender)
+    users = Users.select(Users.username, Users.fullname, Users.gender)
     output = [user for user in users.dicts()]
     return jsonify(output)
     
