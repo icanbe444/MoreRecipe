@@ -15,9 +15,9 @@ class BaseModel(Model):
     class Meta:
         database = db
 class Users(BaseModel):
-    id = AutoField(primary_key=True)
+    id = IntegerField(primary_key=True)
     fullname = CharField()
-    username = CharField(unique=True)
+    username = CharField()
     email = CharField()
     password_harsh = CharField()
     birthday = DateField()
@@ -38,7 +38,7 @@ class Users(BaseModel):
 
 
 class Recipe(BaseModel):
-    id = AutoField(primary_key=True)
+    id = IntegerField(primary_key=True)
     name = CharField()
     description = CharField()
     ingredients = CharField()
