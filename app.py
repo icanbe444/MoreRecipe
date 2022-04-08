@@ -19,15 +19,15 @@ jwt = JWTManager(app)
 def before_request():
     initialize_db()
 
-@app.teardown_request
-def teardown_request(exception):
+@app.after_request
+def after_request(exception):
     db.close()
 
 @app.route('/home')
 def index():
     return 'You are not logged in'
 
-@app.route('/register/', methods=['POST', 'GET'])
+@app.route('/register', methods=['POST', 'GET'])
 def register():
 
     if request.method == 'POST':
@@ -64,7 +64,8 @@ def profile_page():
     return jsonify(logged_in_as=current_user), 200
   
 
-@app.route('/login/', methods=['POST'])
+@app.route('/login', methods=['POST'])
+@jwt_required()
 def login():
    if request.method == 'POST' :
         
@@ -93,6 +94,7 @@ def login():
         
 
 @app.route('/users', methods=['GET'])
+@jwt_required()
 def get_users():
     users = Users.select(Users.user_name, Users.full_name, Users.gender)
     output = [user for user in users.dicts()]
