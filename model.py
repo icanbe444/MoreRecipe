@@ -1,22 +1,29 @@
+from enum import unique
 from tkinter.tix import Tree
 from peewee import *
 from datetime import date
 from flask import Flask, session, request, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 
-db = SqliteDatabase('more_recipe.db')
+# db = SqliteDatabase('more_recipe.db')
+
+db = MySQLDatabase('more_recipe',  user='root', password='Sunk@nmi84!@',host='localhost', port=3306)
 app = Flask(__name__)
 
-class Users(Model):
-    full_name = CharField()
-    user_name = CharField()
+
+class BaseModel(Model):
+    class Meta:
+        database = db
+class Users(BaseModel):
+    id = AutoField(primary_key=True)
+    fullname = CharField()
+    username = CharField(unique=True)
     email = CharField()
     password_harsh = CharField()
     birthday = DateField()
     gender = CharField()
 
-    class Meta:
-        database = db
+    
     @property
     def password(self):
         raise AttributeError('Password is not readabale attribure!')
@@ -30,20 +37,21 @@ class Users(Model):
 
 
 
-class Recipe(Model):
-   
+class Recipe(BaseModel):
+    id = AutoField(primary_key=True)
     name = CharField()
     description = CharField()
     ingredients = CharField()
-    process = CharField()
-
-    class Meta:
-        database = db # this model uses the "more_recipe.db" database
+    process = TextField()
+    post_date = DateTimeField(constraints=[SQL('DEFAULT CURRENT_TIMESTAMP')])
+    poster = ForeignKeyField(Users, backref='recipe')
 
    
-
+class Favorite(BaseModel):
+    users = ForeignKeyField(Users, backref='favorites')
+    recipe = ForeignKeyField(Recipe, backref='favorites')
 
 def initialize_db():
     db.connect()
-    db.create_tables([Users, Recipe], safe=True)
+    db.create_tables([Users, Recipe, Favorite])
 
