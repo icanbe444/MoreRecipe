@@ -44,7 +44,8 @@ class Recipe(BaseModel):
     ingredients = CharField()
     process = TextField()
     post_date = DateTimeField(constraints=[SQL('DEFAULT CURRENT_TIMESTAMP')])
-    poster = ForeignKeyField(Users, backref='recipe')
+    poster_id = ForeignKeyField(Users, backref='recipe', lazy_load=False)
+    
 
    
 class Favorite(BaseModel):
