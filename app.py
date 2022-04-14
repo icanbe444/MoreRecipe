@@ -153,30 +153,14 @@ def get_my_recipes():
 
 #  this displays only one recipe
     query = Recipe.select().join(Users).where(Recipe.poster_id == current_user)
-    
+    recipes = []
     for recipe in query:
-        recipes = []
-        recipes.append(recipe)
-    return recipes
+        recipe_data = {'Recipe Name':recipe.name, 'Process': recipe.process, 
+        'Ingredients': recipe.ingredients , 'Description': recipe.description, 
+        'Posted Date': recipe.post_date, 'Poster': recipe.poster_id}
+        recipes.append(recipe_data)
+    return jsonify(recipes)
         
-    
-    # return jsonify({'Recipe Name':recipe.name, 'Process': recipe.process, 
-    #     'Ingredients': recipe.ingredients , 'Description': recipe.description, 
-    #     'Posted Date': recipe.post_date, 'Poster': recipe.poster_id})
-
-
-# this displays all recipe in a partticular order
-    # recipes = Recipe.select().order_by(Recipe.poster_id.desc())
-    # for recipe in recipes:
-    #     output = [recipe for recipe in recipes.dicts()]
-    #     return jsonify(output)
-
-
-    
-    
-#  this displays only one recipe
-    # for row in Recipe.select(Recipe.name, Recipe.poster_id).join(Users).dicts():
-    #     return(row)
 
 
 @app.route('/test', methods=['GET'])
