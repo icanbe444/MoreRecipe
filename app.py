@@ -1,4 +1,6 @@
 from cgi import test
+from os import abort
+from xml.dom.minidom import Identified
 from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, JWTManager
 from peewee import *
 from datetime import date, datetime, timedelta
@@ -6,10 +8,6 @@ from flask import Flask, session, request, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 import re
 from model import *
-
-
-
-
 
 app = Flask(__name__)
 app.config['JWT_SECRET_KEY'] = 'owoicanbe444sunkami_5#y2L"F4Q8z\n\xec]/'
@@ -102,9 +100,9 @@ def login():
                 return jsonify('Invalid Login Info'), 400
         
         
-   return jsonify("Please provide an email and password"), 400       
-    
-        
+   return jsonify("Please provide an email and password"), 400      
+
+
 
 @app.route('/users', methods=['GET'])
 @jwt_required()
@@ -112,10 +110,8 @@ def get_users():
     users = Users.select(Users.username, Users.fullname, Users.gender, Users.email, Users.birthday, Users.id)
     output = [user for user in users.dicts()]
     return jsonify(output)
+ 
     
-
-
-
 @app.route('/add_recipe', methods=['POST'])
 @jwt_required()
 def add_recipe():
@@ -151,23 +147,25 @@ def get_all_recipes():
 def get_my_recipes():
     current_user = get_jwt_identity()
 
-#  this displays only one recipe
     query = Recipe.select().join(Users).where(Recipe.poster_id == current_user)
     recipes = []
     for recipe in query:
-        recipe_data = {'Recipe Name':recipe.name, 'Process': recipe.process, 
-        'Ingredients': recipe.ingredients , 'Description': recipe.description, 
-        'Posted Date': recipe.post_date, 'Poster': recipe.poster_id}
+        recipe_data = {'Recipe ID':recipe.id}
         recipes.append(recipe_data)
     return jsonify(recipes)
         
 
 
-@app.route('/test', methods=['GET'])
+@app.route('/delete/<int:id>', methods=['DELETE'])
 @jwt_required()
-def test():
+def delete_recipe(id):
     current_user = get_jwt_identity()
-    print(current_user)
+    query = Recipe.delete().where((Recipe.poster_id == current_user) & (Recipe.id == id))
+    return jsonify({'result': query.execute()})
+            
+        
+            
+
 
 if __name__ == '__main__':
     app.run(debug=True)
