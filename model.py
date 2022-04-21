@@ -1,9 +1,14 @@
+from email.mime import image
 from enum import unique
+import mimetypes
 from tkinter.tix import Tree
+from unicodedata import name
 from peewee import *
 from datetime import date
 from flask import Flask, session, request, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+import os
 
 # db = SqliteDatabase('more_recipe.db')
 
@@ -45,12 +50,20 @@ class Recipe(BaseModel):
     process = TextField()
     post_date = DateTimeField(constraints=[SQL('DEFAULT CURRENT_TIMESTAMP')])
     poster_id = ForeignKeyField(Users, backref='recipe', lazy_load=False)
+    image = CharField()
     
 
    
 class Favorite(BaseModel):
     users = ForeignKeyField(Users, backref='favorites')
     recipe = ForeignKeyField(Recipe, backref='favorites')
+
+
+
+
+
+
+ 
 
 def initialize_db():
     db.connect()
