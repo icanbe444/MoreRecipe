@@ -1,4 +1,5 @@
 from cgi import test
+from http.client import FORBIDDEN
 import os
 from crypt import methods
 from fileinput import filename
@@ -131,7 +132,7 @@ def get_users():
 def get_all_recipes():
 
     recipes = Recipe.select(Recipe.name, Recipe.description, Recipe.ingredients,
-                            Recipe.process, Recipe.poster_id, Recipe.id, Recipe.post_date)
+                            Recipe.process, Recipe.poster_id, Recipe.id, Recipe.post_date, Recipe.image).order_by(Recipe.post_date.desc())
     output = [recipe for recipe in recipes.dicts()]
     return jsonify(output)
 
@@ -141,13 +142,16 @@ def get_all_recipes():
 def get_my_recipes():
     current_user = get_jwt_identity()
 
-    query = Recipe.select().join(Users).where(Recipe.poster_id == current_user)
-    recipes = []
-    for recipe in query:
-        recipe_data = {'Recipe ID': recipe.id}
-        recipes.append(recipe_data)
-    return jsonify(recipes)
-
+    # query = Recipe.select().join(Users).where(Recipe.poster_id == current_user)
+    # recipes = []
+    # for recipe in query:
+    #     recipe_data = {'Recipe ID': recipe.id  }
+    #     recipes.append(recipe_data)
+    # return jsonify(recipes)
+    recipes = Recipe.select(Recipe.name, Recipe.description, Recipe.ingredients,
+                            Recipe.process, Recipe.poster_id, Recipe.id, Recipe.post_date, Recipe.image).join(Users).where(Recipe.poster_id == current_user).order_by(Recipe.post_date.desc())
+    output = [recipe for recipe in recipes.dicts()]
+    return jsonify(output)
 
 @app.route('/delete/<int:id>', methods=['DELETE'])
 @jwt_required()
@@ -182,6 +186,10 @@ def update_recipe(id):
             return jsonify('Missing ingredients')
         if not process:
             return jsonify('Missing process')
+
+        query = Recipe.get(Recipe.id == id)
+        if not query:
+            return 'You are not autorized to change this recipe'
         update_recipe = Recipe.update(name=name, description=description, ingredients=ingredients, process=process,
                                       poster_id=poster_id).where((Recipe.poster_id == current_user) & (Recipe.id == id))
 
