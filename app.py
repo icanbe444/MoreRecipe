@@ -128,79 +128,9 @@ def get_users():
     return jsonify(output)
 
 
-@app.route('/recipes', methods=['GET'])
-def get_all_recipes():
-
-    recipes = Recipe.select(Recipe.name, Recipe.description, Recipe.ingredients,
-                            Recipe.process, Recipe.poster_id, Recipe.id, Recipe.post_date, Recipe.image).order_by(Recipe.post_date.desc())
-    output = [recipe for recipe in recipes.dicts()]
-    return jsonify(output)
-
-
-@app.route('/my_recipes', methods=['GET'])
-@jwt_required()
-def get_my_recipes():
-    current_user = get_jwt_identity()
-
-    # query = Recipe.select().join(Users).where(Recipe.poster_id == current_user)
-    # recipes = []
-    # for recipe in query:
-    #     recipe_data = {'Recipe ID': recipe.id  }
-    #     recipes.append(recipe_data)
-    # return jsonify(recipes)
-    recipes = Recipe.select(Recipe.name, Recipe.description, Recipe.ingredients,
-                            Recipe.process, Recipe.poster_id, Recipe.id, Recipe.post_date, Recipe.image).join(Users).where(Recipe.poster_id == current_user).order_by(Recipe.post_date.desc())
-    output = [recipe for recipe in recipes.dicts()]
-    return jsonify(output)
-
-@app.route('/delete/<int:id>', methods=['DELETE'])
-@jwt_required()
-def delete_recipe(id):
-    current_user = get_jwt_identity()
-    query = Recipe.delete().where((Recipe.poster_id == current_user) & (Recipe.id == id))
-    return jsonify({'result': query.execute()}), 204
-
-
-@app.route('/update/<int:id>', methods=['PUT'])
-@jwt_required()
-def update_recipe(id):
-    current_user = get_jwt_identity()
-
-    # return jsonify({'result': query.execute()})
-
-    if not request.method == 'PUT':
-
-        return jsonify('Please enter your data')
-
-    else:
-        name = request.form['name']
-        description = request.form['description']
-        ingredients = request.form['ingredients']
-        process = request.form['process']
-        poster_id = current_user
-        if not name:
-            return jsonify('Missing Name')
-        if not description:
-            return jsonify('Missing description')
-        if not ingredients:
-            return jsonify('Missing ingredients')
-        if not process:
-            return jsonify('Missing process')
-
-        query = Recipe.get(Recipe.id == id)
-        if not query:
-            return 'You are not autorized to change this recipe'
-        update_recipe = Recipe.update(name=name, description=description, ingredients=ingredients, process=process,
-                                      poster_id=poster_id).where((Recipe.poster_id == current_user) & (Recipe.id == id))
-
-        return jsonify({'result': update_recipe.execute()}), 201
-
-
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-
 @app.route('/add_recipe', methods=['POST'])
 @jwt_required()
 def add_recipe():
@@ -234,6 +164,100 @@ def add_recipe():
             {'message': 'Allowed file types are txt, pdf, png, jpg, jpeg, gif'})
         resp.status_code = 400
         return resp
+
+
+@app.route('/recipes', methods=['GET'])
+def get_all_recipes():
+
+    recipes = Recipe.select(Recipe.name, Recipe.description, Recipe.ingredients,
+                            Recipe.process, Recipe.poster_id, Recipe.id, Recipe.post_date, Recipe.image).order_by(Recipe.post_date.desc())
+    output = [recipe for recipe in recipes.dicts()]
+    return jsonify(output)
+
+
+@app.route('/my_recipes', methods=['GET'])
+@jwt_required()
+def get_my_recipes():
+    current_user = get_jwt_identity()
+
+    # query = Recipe.select().join(Users).where(Recipe.poster_id == current_user)
+    # recipes = []
+    # for recipe in query:
+    #     recipe_data = {'Recipe ID': recipe.id  }
+    #     recipes.append(recipe_data)
+    # return jsonify(recipes)
+    recipes = Recipe.select(Recipe.name, Recipe.description, Recipe.ingredients,
+                            Recipe.process, Recipe.poster_id, Recipe.id, Recipe.post_date, Recipe.image).join(Users).where(Recipe.poster_id == current_user).order_by(Recipe.post_date.desc())
+    output = [recipe for recipe in recipes.dicts()]
+    return jsonify(output)
+
+@app.route('/delete/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_recipe(id):
+    current_user = get_jwt_identity()
+    query = Recipe.delete().where((Recipe.poster_id == current_user) & (Recipe.id == id))
+    if not Recipe.select().where(Recipe.id == id).exists():
+        return 'Recipe ID does not Exist', 404
+
+    return jsonify({'result': query.execute()}), 204
+
+
+@app.route('/update/<int:id>', methods=['PUT'])
+@jwt_required()
+def update_recipe(id):
+    current_user = get_jwt_identity()
+
+    # return jsonify({'result': query.execute()})
+
+    if 'file' not in request.files:
+        resp = jsonify({'message': 'No file part in the request'})
+        resp.status_code = 400
+        return resp
+    file = request.files['file']
+    if file.filename == '':
+        resp = jsonify({'message': 'No file selected for uploading'})
+        resp.status_code = 400
+        return resp
+    current_user = get_jwt_identity()
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        name = request.form['name']
+        description = request.form['description']
+        ingredients = request.form['ingredients']
+        process = request.form['process']
+        poster_id = current_user
+        image_path = app.config['UPLOAD_FOLDER']+ '/' + filename
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        query = Recipe.select().where((Recipe.poster_id == current_user) & (Recipe.id == id))
+        if not Recipe.select().where(Recipe.id == id).exists():
+            return jsonify('Recipe ID does not Exist'), 404
+        if not query:
+            return jsonify('You are not autorized to change this recipe'), 403
+        update_recipe = Recipe.update(name=name, description=description, ingredients=ingredients, process=process,
+                                      poster_id=poster_id, image= image_path).where((Recipe.poster_id == current_user) & (Recipe.id == id))
+
+        return jsonify({'result': update_recipe.execute()}), 201
+       
+        
+       
+    else:
+        resp = jsonify(
+            {'message': 'Allowed file types are txt, pdf, png, jpg, jpeg, gif'})
+        resp.status_code = 400
+        return resp
+    
+
+@app.route("/search/<topic>", methods=['GET'])
+def get_search(topic):
+  
+  topic_modified = topic.replace(" ", "_").lower()
+  
+  
+ 
+
+
+
+
 
 
 if __name__ == '__main__':
