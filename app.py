@@ -1,4 +1,5 @@
 from cgi import test
+from cgitb import text
 from http.client import FORBIDDEN
 import os
 from crypt import methods
@@ -6,7 +7,10 @@ from fileinput import filename
 from os import abort
 from turtle import update
 from urllib import response
+from wsgiref import headers
 from xml.dom.minidom import Identified
+
+
 from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, JWTManager
 from peewee import *
 from datetime import date, datetime, timedelta
@@ -79,7 +83,7 @@ def register():
         user = Users.create(fullname=fullname, username=username, email=email,
                             password_harsh=hashed_pw, birthday=birthday, gender=gender)
 
-        return {"You have been registered"}, 200
+        return jsonify("You have been registered"), 200
 
     return jsonify('Please enter your detail'), 400
 
@@ -156,7 +160,7 @@ def add_recipe():
         new_recipe = Recipe.create(name=name, description=description, ingredients=ingredients,
                                    process=process, poster_id=poster_id, image=image_path)
         file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        resp = jsonify({'message': 'File successfully uploaded'})
+        resp = jsonify({'message': 'Recipe successfully added'})
         resp.status_code = 201
         return resp
     else:
@@ -195,10 +199,12 @@ def get_my_recipes():
 @jwt_required()
 def delete_recipe(id):
     current_user = get_jwt_identity()
+    delete_query = Recipe.select().where((Recipe.poster_id == current_user) & (Recipe.id == id))
     query = Recipe.delete().where((Recipe.poster_id == current_user) & (Recipe.id == id))
     if not Recipe.select().where(Recipe.id == id).exists():
         return 'Recipe ID does not Exist', 404
-
+    if not delete_query:
+            return jsonify('You are not autorized to change this recipe'), 403
     return jsonify({'result': query.execute()}), 204
 
 
@@ -247,12 +253,70 @@ def update_recipe(id):
         return resp
     
 
-@app.route("/search/<topic>", methods=['GET'])
-def get_search(topic):
-  
-  topic_modified = topic.replace(" ", "_").lower()
-  
-  
+@app.route("/search", methods=['GET'])
+def get_search():
+    my_search = request.args.get('querry')
+    search_results = Recipe.select().where(Recipe.name ** (f'%{my_search}%')).order_by(Recipe.post_date.desc())
+    output = [recipe for recipe in search_results.dicts()]
+    if not output:
+        return jsonify({'Search Result': 'Your search did not match any recipe'})
+
+    else:
+        return jsonify(output)
+    
+   
+    
+@app.route("/comment/<int:id>", methods=['POST'])   
+@jwt_required()
+def create_comment(id):
+    current_user = get_jwt_identity()
+    comment = request.form['comment']
+
+    if not comment:
+        return jsonify('Comment cannot be empty.')
+    if not Recipe.select().where(Recipe.id == id).exists():
+        return 'Recipe ID does not Exist', 404
+    recipe_id = Recipe.get(id)
+    new_comment = Comment.create(recipe_id = recipe_id ,text=comment, poster_id=current_user, )
+    return jsonify('Comment posted'), 201
+
+
+@app.route("/search", methods=['GET'])
+@jwt_required()
+def delete_comment(comment_id):
+    comment = Comment.query.filter_by(id=comment_id).first()
+
+    if not comment:
+        flash('Comment does not exist.', category='error')
+    elif current_user.id != comment.author and current_user.id != comment.post.author:
+        flash('You do not have permission to delete this comment.', category='error')
+    else:
+        db.session.delete(comment)
+        db.session.commit()
+
+    return redirect(url_for('views.home'))
+
+
+@app.route("/search", methods=['GET'])
+@jwt_required()
+def like(post_id):
+    post = Post.query.filter_by(id=post_id).first()
+    like = Like.query.filter_by(
+        author=current_user.id, post_id=post_id).first()
+
+    if not post:
+        return jsonify({'error': 'Post does not exist.'}, 400)
+    elif like:
+        db.session.delete(like)
+        db.session.commit()
+    else:
+        like = Like(author=current_user.id, post_id=post_id)
+        db.session.add(like)
+        db.session.commit()
+
+    return jsonify({"likes": len(post.likes), "liked": current_user.id in map(lambda x: x.author, post.likes)})
+
+    
  
 
 

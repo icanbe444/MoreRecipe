@@ -1,4 +1,3 @@
-from email.mime import image
 from enum import unique
 import mimetypes
 from tkinter.tix import Tree
@@ -19,8 +18,9 @@ app = Flask(__name__)
 class BaseModel(Model):
     class Meta:
         database = db
+        
 class Users(BaseModel):
-    id = IntegerField(primary_key=True)
+    id = PrimaryKeyField(primary_key=True)
     fullname = CharField()
     username = CharField()
     email = CharField()
@@ -43,7 +43,7 @@ class Users(BaseModel):
 
 
 class Recipe(BaseModel):
-    id = IntegerField(primary_key=True)
+    id = PrimaryKeyField(primary_key=True)
     name = CharField()
     description = CharField()
     ingredients = CharField()
@@ -51,21 +51,35 @@ class Recipe(BaseModel):
     post_date = DateTimeField(constraints=[SQL('DEFAULT CURRENT_TIMESTAMP')])
     poster_id = ForeignKeyField(Users, backref='recipe', lazy_load=False)
     image = CharField()
+
+
+class Comment(BaseModel):
+    id = PrimaryKeyField(primary_key=True)
+    text = CharField()
+    recipe_id = ForeignKeyField(Recipe, backref='comment', lazy_load=False)
+    post_date = DateTimeField(constraints=[SQL('DEFAULT CURRENT_TIMESTAMP')])
+    poster_id = ForeignKeyField(Users, backref='comment', lazy_load=False)
     
 
-   
-class Favorite(BaseModel):
-    users = ForeignKeyField(Users, backref='favorites')
-    recipe = ForeignKeyField(Recipe, backref='favorites')
 
-
-
-
-
-
+class Like(BaseModel):
+    id = PrimaryKeyField(primary_key=True)
+    recipe_id = ForeignKeyField(Recipe, backref='comment', lazy_load=False)
+    post_date = DateTimeField(constraints=[SQL('DEFAULT CURRENT_TIMESTAMP')])
+    poster_id = ForeignKeyField(Users, backref='like', lazy_load=False)
+    
  
+
+class Dislike(BaseModel):
+    id = PrimaryKeyField(primary_key=True)
+    recipe_id = ForeignKeyField(Recipe, backref='comment', lazy_load=False)
+    post_date = DateTimeField(constraints=[SQL('DEFAULT CURRENT_TIMESTAMP')])
+    poster_id = ForeignKeyField(Users, backref='dislike', lazy_load=False)
+    
+
+  
 
 def initialize_db():
     db.connect()
-    db.create_tables([Users, Recipe, Favorite])
+    db.create_tables([Users, Recipe, Like, Dislike, Comment])
 
