@@ -20,7 +20,7 @@ import re
 from model import *
 from werkzeug.utils import secure_filename
 
-
+regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
 UPLOAD_FOLDER = '/Users/user/PythonProject/MoreRecipe/uploads'
 ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'}
 app = Flask(__name__)
@@ -59,7 +59,7 @@ def user_lookup_callback(_jwt_header, jwt_data):
 
 @app.route('/register', methods=['POST', 'GET'])
 def register():
-
+    
     if request.method == 'POST':
         fullname = request.form['fullname']
         username = request.form['username']
@@ -75,8 +75,9 @@ def register():
             return jsonify('Missing password')
         if not email:
             return jsonify('Missing email')
-        registered_user = Users.select(Users.username).where(
-            Users.username == username).count()
+        if not re.fullmatch(regex, email):
+            return jsonify('Please enter a vilid email')
+        registered_user = Users.select(Users.username).where(Users.username == username).count()
         if registered_user:
             return jsonify('User Already Exists'), 400
         hashed_pw = generate_password_hash(password_harsh, "sha256")
@@ -178,6 +179,23 @@ def get_all_recipes():
     output = [recipe for recipe in recipes.dicts()]
     return jsonify(output)
 
+@app.route('/recipe/<int:id>', methods=['GET'])
+@jwt_required()
+def get_one_recipe(id):
+    current_user = get_jwt_identity()
+    # query = Recipe.select().where((Recipe.poster_id == current_user) & (Recipe.id == id))
+    
+    if not Recipe.select().where(Recipe.id == id).exists():
+        return 'Recipe ID does not Exist', 404
+    recipe = Recipe.select(Recipe.name, Recipe.description, Recipe.ingredients,
+                            Recipe.process, Recipe.poster_id, Recipe.id, Recipe.post_date, 
+                            Recipe.image).join(Users).where(Recipe.id == id)
+    
+    output = [recipe for recipe in recipe.dicts()]
+    return jsonify(output)
+
+   
+
 
 @app.route('/my_recipes', methods=['GET'])
 @jwt_required()
@@ -191,7 +209,8 @@ def get_my_recipes():
     #     recipes.append(recipe_data)
     # return jsonify(recipes)
     recipes = Recipe.select(Recipe.name, Recipe.description, Recipe.ingredients,
-                            Recipe.process, Recipe.poster_id, Recipe.id, Recipe.post_date, Recipe.image).join(Users).where(Recipe.poster_id == current_user).order_by(Recipe.post_date.desc())
+                            Recipe.process, Recipe.poster_id, Recipe.id, Recipe.post_date, 
+                            Recipe.image).join(Users).where(Recipe.poster_id == current_user).order_by(Recipe.post_date.desc())
     output = [recipe for recipe in recipes.dicts()]
     return jsonify(output)
 
@@ -277,48 +296,45 @@ def create_comment(id):
     if not Recipe.select().where(Recipe.id == id).exists():
         return 'Recipe ID does not Exist', 404
     recipe_id = Recipe.get(id)
-    new_comment = Comment.create(recipe_id = recipe_id ,text=comment, poster_id=current_user, )
+    new_comment = Comment.create(recipe_id = recipe_id ,text=comment, poster_id=current_user )
     return jsonify('Comment posted'), 201
 
 
-@app.route("/search", methods=['GET'])
+
+@app.route("/like/<int:id>", methods=['GET'])
 @jwt_required()
-def delete_comment(comment_id):
-    comment = Comment.query.filter_by(id=comment_id).first()
+def like(id):
+    current_user = get_jwt_identity()
+   
+    
+    
+    if not Recipe.select().where(Recipe.id == id).exists():
+        return 'Recipe ID does not Exist', 404
+# like = Like.select().where((Like.poster_id == current_user) & (Recipe.id == id))
+    recipe_id = Recipe.get(Recipe.id== id)
+    like = Like.select().where((Like.recipe_id == id) & (Like.poster_id == current_user))
 
-    if not comment:
-        flash('Comment does not exist.', category='error')
-    elif current_user.id != comment.author and current_user.id != comment.post.author:
-        flash('You do not have permission to delete this comment.', category='error')
-    else:
-        db.session.delete(comment)
-        db.session.commit()
+    if like:
+        like = Like.delete().where((Like.recipe_id == id) & (Like.poster_id == current_user))
+        return jsonify({'result': like.execute()}), 204
+    else: 
+        new_like = Like.create(recipe_id = recipe_id , poster_id=current_user )
+        
 
-    return redirect(url_for('views.home'))
-
-
-@app.route("/search", methods=['GET'])
-@jwt_required()
-def like(post_id):
-    post = Post.query.filter_by(id=post_id).first()
-    like = Like.query.filter_by(
-        author=current_user.id, post_id=post_id).first()
-
-    if not post:
-        return jsonify({'error': 'Post does not exist.'}, 400)
-    elif like:
-        db.session.delete(like)
-        db.session.commit()
-    else:
-        like = Like(author=current_user.id, post_id=post_id)
-        db.session.add(like)
-        db.session.commit()
-
-    return jsonify({"likes": len(post.likes), "liked": current_user.id in map(lambda x: x.author, post.likes)})
+        return jsonify(f'You have liked the recipe with ID:  {recipe_id}'), 200
 
     
  
-
+@app.route("/dislike/<int:id>", methods=['GET'])
+@jwt_required()
+def dislike(id):
+    current_user = get_jwt_identity()
+    
+    if not Recipe.select().where(Recipe.id == id).exists():
+        return 'Recipe ID does not Exist', 404
+    get_recipe_id = Recipe.get(Recipe.id== id)
+    dislike = Dislike.create(recipe_id = get_recipe_id , poster_id=current_user )
+    return jsonify(f'You have disliked the recipe with ID:  {get_recipe_id}'), 200
 
 
 
