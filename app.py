@@ -1,14 +1,16 @@
-from cgi import test
-from cgitb import text
-from http.client import FORBIDDEN
-import os
-from crypt import methods
-from fileinput import filename
-from os import abort
-from turtle import update
-from urllib import response
-from wsgiref import headers
-from xml.dom.minidom import Identified
+# from cgi import test
+# from cgitb import text
+# from email.mime import image
+# from http.client import FORBIDDEN
+# import os
+# from crypt import methods
+# from fileinput import filename
+# from os import abort
+# from turtle import update
+# from urllib import response
+# from wsgiref import headers
+# from xml.dom.minidom import Identified
+
 
 
 from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, JWTManager
@@ -19,7 +21,11 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import re
 from model import *
 from werkzeug.utils import secure_filename
+import cloudinary
+import cloudinary.uploader
+from flask_mail import Mail, Message
 
+Access_Token= "c8d45db64bc41de9e99793344c1bd78b53a500fe"
 regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
 UPLOAD_FOLDER = '/Users/user/PythonProject/MoreRecipe/uploads'
 ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'}
@@ -28,8 +34,19 @@ app.config['JWT_SECRET_KEY'] = 'owoicanbe444sunkami_5#y2L"F4Q8z\n\xec]/'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 jwt = JWTManager(app)
-# DB setup using MYSQLAlchemy
-# app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymsql://root:Sunk@nmi84!@@localhost/more_recipe'
+cloudinary.config(
+    cloud_name="tpais",
+    api_key="127237393369473",
+    api_secret="-G9UJLTlf8PufwDpNo5xy4nLD_4"
+)
+
+app.config['MAIL_SERVER']='smtp.mailtrap.io'
+app.config['MAIL_PORT'] = 2525
+app.config['MAIL_USERNAME'] = '6cce44c9b47764'
+app.config['MAIL_PASSWORD'] = 'c6af206f893311'
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USE_SSL'] = False
+mail = Mail(app)
 
 
 @app.before_request
@@ -84,9 +101,16 @@ def register():
         user = Users.create(fullname=fullname, username=username, email=email,
                             password_harsh=hashed_pw, birthday=birthday, gender=gender)
 
-        return jsonify("You have been registered"), 200
+    
+        msg = Message('Welcome to your recipe world!', sender =   'icanbe444@gmail.com', recipients = [email])
+        msg.body = f"Hey {username}, sending you this email from my Flask app, lmk if it works"
+        mail.send(msg)
+        return jsonify({'Status': f'Dear {username}, Your registration is successful', 
+                        'Message':'Please check your mail for further instructions',}), 200
+        
 
-    return jsonify('Please enter your detail'), 400
+    return jsonify({'message': 'Please enter your detail'}), 400
+   
 
 
 @app.route('/profile', methods=['GET'])
@@ -94,7 +118,12 @@ def register():
 def profile_page():
 
     current_user = get_jwt_identity()
-    return jsonify(logged_in_as=current_user), 200
+    users = Users.select(Users.username, Users.fullname,
+                         Users.gender, Users.email, Users.birthday, Users.id).where(Users.id == current_user)
+    output = [user for user in users.dicts()]
+    return jsonify({'logged_in_as': output}), 200
+
+    
 
 
 @app.route('/login', methods=['POST'])
@@ -104,10 +133,10 @@ def login():
         username = request.form['username']
         password = request.form['password']
         if not username:
-            return jsonify('Missing username'), 400
+            return jsonify({'message':'Missing username'}), 400
 
         if not password:
-            return jsonify('Missing password'), 400
+            return jsonify({'message': 'Missing password'}), 400
         registered_user = Users.get(
             Users.username == username, Users.fullname == Users.fullname)
         password_pass = check_password_hash(
@@ -119,9 +148,9 @@ def login():
                 return {"access_token": access_token}, 200
 
         else:
-            return jsonify('Invalid Login Info'), 400
+            return jsonify({'message':'Invalid Login Info'}), 400
 
-    return jsonify("Please provide an email and password"), 400
+    return jsonify({'message':"Please provide an email and password"}), 400
 
 
 @app.route('/users', methods=['GET'])
@@ -130,7 +159,7 @@ def get_users():
     users = Users.select(Users.username, Users.fullname,
                          Users.gender, Users.email, Users.birthday, Users.id)
     output = [user for user in users.dicts()]
-    return jsonify(output)
+    return jsonify({'App_Users': output})
 
 
 def allowed_file(filename):
@@ -139,7 +168,9 @@ def allowed_file(filename):
 @app.route('/add_recipe', methods=['POST'])
 @jwt_required()
 def add_recipe():
-    
+    current_user = get_jwt_identity()
+    app.logger.info('in upload route')
+    upload_result = None
     if 'file' not in request.files:
         resp = jsonify({'message': 'No file part in the request'})
         resp.status_code = 400
@@ -149,33 +180,27 @@ def add_recipe():
         resp = jsonify({'message': 'No file selected for uploading'})
         resp.status_code = 400
         return resp
-    current_user = get_jwt_identity()
+   
     if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
+        upload_result = cloudinary.uploader.upload(file)
         name = request.form['name']
         description = request.form['description']
         ingredients = request.form['ingredients']
         process = request.form['process']
         poster_id = current_user
-        image_path = app.config['UPLOAD_FOLDER']+ '/' + filename
+        url = upload_result["secure_url"]
         new_recipe = Recipe.create(name=name, description=description, ingredients=ingredients,
-                                   process=process, poster_id=poster_id, image=image_path)
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        resp = jsonify({'message': 'Recipe successfully added'})
-        resp.status_code = 201
-        return resp
-    else:
-        resp = jsonify(
-            {'message': 'Allowed file types are txt, pdf, png, jpg, jpeg, gif'})
-        resp.status_code = 400
-        return resp
+                                   process=process, poster_id=poster_id, image= url)
+        return jsonify({'Status': 'Success', 'Message':'Recipe successfully added', 'RecipeName': name})
+       
 
 
 @app.route('/recipes', methods=['GET'])
 def get_all_recipes():
 
     recipes = Recipe.select(Recipe.name, Recipe.description, Recipe.ingredients,
-                            Recipe.process, Recipe.poster_id, Recipe.id, Recipe.post_date, Recipe.image).order_by(Recipe.post_date.desc())
+                            Recipe.process, Recipe.poster_id, Recipe.id, Recipe.post_date, 
+                            Recipe.image).order_by(Recipe.post_date.desc())
     output = [recipe for recipe in recipes.dicts()]
     return jsonify(output)
 
@@ -221,7 +246,7 @@ def delete_recipe(id):
     delete_query = Recipe.select().where((Recipe.poster_id == current_user) & (Recipe.id == id))
     query = Recipe.delete().where((Recipe.poster_id == current_user) & (Recipe.id == id))
     if not Recipe.select().where(Recipe.id == id).exists():
-        return 'Recipe ID does not Exist', 404
+        return jsonify('Recipe ID does not Exist'), 404
     if not delete_query:
             return jsonify('You are not autorized to change this recipe'), 403
     return jsonify({'result': query.execute()}), 204
@@ -231,9 +256,8 @@ def delete_recipe(id):
 @jwt_required()
 def update_recipe(id):
     current_user = get_jwt_identity()
-
-    # return jsonify({'result': query.execute()})
-
+    app.logger.info('in upload route')
+    upload_result = None
     if 'file' not in request.files:
         resp = jsonify({'message': 'No file part in the request'})
         resp.status_code = 400
@@ -243,25 +267,25 @@ def update_recipe(id):
         resp = jsonify({'message': 'No file selected for uploading'})
         resp.status_code = 400
         return resp
-    current_user = get_jwt_identity()
+   
     if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
+        upload_result = cloudinary.uploader.upload(file)
         name = request.form['name']
         description = request.form['description']
         ingredients = request.form['ingredients']
         process = request.form['process']
         poster_id = current_user
-        image_path = app.config['UPLOAD_FOLDER']+ '/' + filename
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        url = upload_result["secure_url"]
         query = Recipe.select().where((Recipe.poster_id == current_user) & (Recipe.id == id))
         if not Recipe.select().where(Recipe.id == id).exists():
-            return jsonify('Recipe ID does not Exist'), 404
+            return jsonify({'Status':'Unsuccessful', 'Message': 'Recipe ID does not Exist'}), 404
         if not query:
-            return jsonify('You are not autorized to change this recipe'), 403
+            return jsonify({'Status': 'Unseccessful', 'Message':'You are not autorized to change this recipe'}), 403
         update_recipe = Recipe.update(name=name, description=description, ingredients=ingredients, process=process,
-                                      poster_id=poster_id, image= image_path).where((Recipe.poster_id == current_user) & (Recipe.id == id))
-
-        return jsonify({'result': update_recipe.execute()}), 201
+                                      poster_id=poster_id, image= url).where((Recipe.poster_id == current_user) & (Recipe.id == id))
+        update_recipe.execute()
+        return jsonify({'Status': 'Success', 'Message':'Recipe successfully updated', 'RecipeName': name})
+        
        
         
        
@@ -278,7 +302,7 @@ def get_search():
     search_results = Recipe.select().where(Recipe.name ** (f'%{my_search}%')).order_by(Recipe.post_date.desc())
     output = [recipe for recipe in search_results.dicts()]
     if not output:
-        return jsonify({'Search Result': 'Your search did not match any recipe'})
+        return jsonify({'SearchResult': 'Your search did not match any recipe'})
 
     else:
         return jsonify(output)
@@ -290,14 +314,16 @@ def get_search():
 def create_comment(id):
     current_user = get_jwt_identity()
     comment = request.form['comment']
-
-    if not comment:
-        return jsonify('Comment cannot be empty.')
     if not Recipe.select().where(Recipe.id == id).exists():
-        return 'Recipe ID does not Exist', 404
+        return jsonify({'Status': 'Unsuccessful', 'Message': 'Recipe ID does not Exist'}), 400
+    if not comment:
+        return jsonify({'Status': 'Character Error', 'Message': 'Comment session cannot be empty'}), 400
+    if len(comment) > 100:
+        return jsonify({'Status': 'Input Error', 'Message': 'You have exceeded the number of character'}), 400
+    
     recipe_id = Recipe.get(id)
     new_comment = Comment.create(recipe_id = recipe_id ,text=comment, poster_id=current_user )
-    return jsonify('Comment posted'), 201
+    return jsonify({'Status': 'Successful', 'Message':'Comment successfully posted', 'Comment': comment}), 201
 
 
 
@@ -309,19 +335,24 @@ def like(id):
     
     
     if not Recipe.select().where(Recipe.id == id).exists():
-        return 'Recipe ID does not Exist', 404
-# like = Like.select().where((Like.poster_id == current_user) & (Recipe.id == id))
+        return jsonify({'Status': 'Unsuccessful', 'Message': 'Recipe ID does not Exist'}), 400
+
+        
     recipe_id = Recipe.get(Recipe.id== id)
-    like = Like.select().where((Like.recipe_id == id) & (Like.poster_id == current_user))
+    # like = Like.select().where((Like.recipe_id == id) & (Like.poster_id == current_user))
+    like = Like.select().where((Like.recipe_id == id))
 
     if like:
-        like = Like.delete().where((Like.recipe_id == id) & (Like.poster_id == current_user))
-        return jsonify({'result': like.execute()}), 204
+        # like = Like.delete().where((Like.recipe_id == id) & (Like.poster_id == current_user))
+        like = Like.delete().where((Like.recipe_id == id))
+        return jsonify({'Status': 'Successful', 'result': like.execute(), 'Message': 'Like Deleted'}), 204
+        
     else: 
         new_like = Like.create(recipe_id = recipe_id , poster_id=current_user )
+        return jsonify({'Status': 'Successful', 'Message': 'You have liked a recipe'}), 200
         
 
-        return jsonify(f'You have liked the recipe with ID:  {recipe_id}'), 200
+        
 
     
  
@@ -331,11 +362,25 @@ def dislike(id):
     current_user = get_jwt_identity()
     
     if not Recipe.select().where(Recipe.id == id).exists():
-        return 'Recipe ID does not Exist', 404
-    get_recipe_id = Recipe.get(Recipe.id== id)
-    dislike = Dislike.create(recipe_id = get_recipe_id , poster_id=current_user )
-    return jsonify(f'You have disliked the recipe with ID:  {get_recipe_id}'), 200
+        return jsonify({'Status': 'Unsuccessful', 'Message': 'Recipe ID does not Exist'}), 400
+    like = Like.select().where((Like.recipe_id == id) & (Like.poster_id == current_user))
+    if like:
+        like = Like.delete().where((Like.recipe_id == id) & (Like.poster_id == current_user))
+        return jsonify({'Status': 'Successful', 'result': like.execute(), 'Message': 'Like Deleted'}), 204
+    dislike = Dislike.select().where((Dislike.recipe_id == id) & (Dislike.poster_id == current_user))       
+    
+    recipe_id = Recipe.get(Recipe.id== id)
+    
+    if dislike:
+        dislike = Dislike.delete().where((Dislike.recipe_id == id) & (Dislike.poster_id == current_user)) 
+        return jsonify({'Status': 'Successful', 'result': dislike.execute(), 'Message': 'Dislike Deleted'}), 204
+    else:
+        dislike = Dislike.create(recipe_id = recipe_id , poster_id=current_user )
+        return jsonify({'Status': 'Successful', 'Message': 'Recipe has been disliked'}), 200
 
+    
+    
+    
 
 
 
