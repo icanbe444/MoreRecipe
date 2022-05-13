@@ -40,16 +40,6 @@ class Users(BaseModel):
     def verify_password(self,password):
         return check_password_hash(self.password_harsh, password)
 
-
-class User_Profile(BaseModel):
-    id = PrimaryKeyField(primary_key=True)
-    fullname = CharField()
-    username = CharField()
-    email = CharField()
-    birthday = DateField()
-    gender = CharField()
-    user = ForeignKeyField(Users, backref='comment', lazy_load=False)
-
 class Recipe(BaseModel):
     id = PrimaryKeyField(primary_key=True)
     name = CharField()
@@ -57,7 +47,7 @@ class Recipe(BaseModel):
     ingredients = CharField()
     process = TextField()
     post_date = DateTimeField(constraints=[SQL('DEFAULT CURRENT_TIMESTAMP')])
-    poster_id = ForeignKeyField(Users, backref='recipe', lazy_load=False)
+    poster_id = ForeignKeyField(Users, backref='recipe', lazy_load=False, on_delete='CASCADE')
     image = CharField()
 
 
@@ -89,5 +79,5 @@ class Dislike(BaseModel):
 
 def initialize_db():
     db.connect()
-    db.create_tables([Users, Recipe, Like, Dislike, Comment, User_Profile])
+    db.create_tables([Users, Recipe, Like, Dislike, Comment])
 
