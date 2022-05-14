@@ -1,5 +1,6 @@
 from enum import unique
 import mimetypes
+import profile
 from tkinter.tix import Tree
 from unicodedata import name
 from peewee import *
@@ -27,6 +28,7 @@ class Users(BaseModel):
     password_harsh = CharField()
     birthday = DateField()
     gender = CharField()
+    profile = CharField()
 
     
     @property
