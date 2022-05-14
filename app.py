@@ -461,5 +461,54 @@ def dislike(id):
         return jsonify({'Status': 'Successful', 'Message': 'Recipe has been disliked'}), 200
 
 
+
+
+@app.route('/update_user/<username>', methods=['PATCH'])
+@jwt_required()
+def update_user(username):
+    current_user = get_jwt_identity()
+    if request.method == 'PATCH':
+        app.logger.info('in upload route')
+        upload_result = None
+    if 'file' not in request.files:
+        resp = jsonify({'message': 'No file part in the request'})
+        resp.status_code = 400
+        return resp
+    file = request.files['file']
+    if file.filename == '':
+        resp = jsonify({'message': 'No file selected for uploading'})
+        resp.status_code = 400
+        return resp
+   
+    if file and allowed_file(file.filename):
+        upload_result = cloudinary.uploader.upload(file)
+        fullname = request.form['fullname']
+        birthday = request.form['birthday']
+        gender = request.form['gender']
+        url = upload_result["secure_url"]
+        query = Users.select().where(Users.username == username)
+        email = [users.email for users in query]
+        use_email = query[0].email
+        update_user = Users.update(fullname = fullname, birthday = birthday, gender= gender,profile = url).where(Users.username == username)
+        update_user.execute()
+        msg = Message('Update Successful', sender =   'icanbe444@gmail.com', recipients = [use_email])
+        msg.body = f"Hey {username}, Your profile has been successfully updated"
+        mail.send(msg)
+        return jsonify({'Message':'Your profile has been updated'}), 200
+                        
+    return jsonify({'message':'Invalid details'}), 400
+
+
+
+
+
+
+
+
+
+
 if __name__ == '__main__':
     app.run(debug=True)
+
+            
+            
