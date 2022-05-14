@@ -76,6 +76,21 @@ def user_lookup_callback(_jwt_header, jwt_data):
 def register():
     
     if request.method == 'POST':
+        app.logger.info('in upload route')
+        upload_result = None
+    if 'file' not in request.files:
+        resp = jsonify({'message': 'No file part in the request'})
+        resp.status_code = 400
+        return resp
+    file = request.files['file']
+    if file.filename == '':
+        resp = jsonify({'message': 'No file selected for uploading'})
+        resp.status_code = 400
+        return resp
+   
+    if file and allowed_file(file.filename):
+        upload_result = cloudinary.uploader.upload(file)
+        
         fullname = request.form['fullname']
         username = request.form['username']
         email = request.form['email']
@@ -92,21 +107,23 @@ def register():
             return jsonify({'message':'Missing email'})
         if not re.fullmatch(regex, email):
             return jsonify({'message':'Please enter a vilid email'})
-        registered_user = Users.select(Users.email).where(Users.email == email).count()
-        check_username = Users.select(Users.username).where(Users.username == username).count()
-        if (registered_user) & (check_username):
+        
+        registered_user = Users.select().where(Users.email == email)
+        check_username = Users.select().where(Users.username == username)
+        if registered_user:
             return jsonify({'message':'User Already Exists'}), 400
-            
-        hashed_pw = generate_password_hash(password_harsh, "sha256")
-        user = Users.create(fullname=fullname, username=username, email=email,
-                            password_harsh=hashed_pw, birthday=birthday, gender=gender)
-
-    
-        msg = Message('Welcome to your recipe world!', sender =   'icanbe444@gmail.com', recipients = [email])
-        msg.body = f"Hey {username}, sending you this email from my Flask app, lmk if it works"
-        mail.send(msg)
-        return jsonify({'Status': f'Dear {username}, Your registration is successful', 
-                        'Message':'Please check your mail for further instructions',}), 200
+        elif check_username:
+                return jsonify({'message':'Username Taken'}), 400
+        else:
+            url = upload_result["secure_url"]
+            hashed_pw = generate_password_hash(password_harsh, "sha256")
+            user = Users.create(fullname=fullname, username=username, email=email,
+                                password_harsh=hashed_pw, birthday=birthday, gender=gender, profile = url)
+            msg = Message('Welcome to your recipe world!', sender =   'icanbe444@gmail.com', recipients = [email])
+            msg.body = f"Hey {username}, sending you this email from my Flask app, lmk if it works"
+            mail.send(msg)
+            return jsonify({'Status': f'Dear {username}, Your registration is successful', 
+                            'Message':'Please check your mail for further instructions',}), 200
         
 
     return jsonify({'message': 'Please enter your detail'}), 400
@@ -154,7 +171,6 @@ def login():
     return jsonify({'message':"Please provide an email and password"}), 400
 
 
-
 @app.route('/request_password_reset', methods=['POST'])
 def request_password_reset():
     if request.method == 'POST':
@@ -199,12 +215,6 @@ def reset_password(email):
     return jsonify({'message':'Enter your details'}), 400
     
     
-   
-    
-
-                        
-
-
 
 @app.route('/users', methods=['GET'])
 @jwt_required()
@@ -271,16 +281,27 @@ def get_one_recipe(id):
     output = [recipe for recipe in recipe.dicts()]
     return jsonify(output)
 
-   
+@app.route('/recipes/<int:page>', methods=['GET'])
+def get_recipe_page(page=1):
+    if request.method == 'GET':
+        per_page = 2
+        query = Recipe.select()
+    recipes = Recipe.select(Recipe.name, Recipe.description, Recipe.ingredients,
+                            Recipe.process, Recipe.poster_id, Recipe.id, Recipe.post_date, 
+                            Recipe.image).order_by(Recipe.post_date.desc()).paginate(page, per_page)
+    output = [recipe for recipe in recipes.dicts()]
+    return jsonify(output)   
 
 
-@app.route('/my_recipes', methods=['GET'])
+@app.route('/my_recipes/<int:page>', methods=['GET'])
 @jwt_required()
-def get_my_recipes():
+def get_my_recipes(page=1):
+    per_page = 2
     current_user = get_jwt_identity()
     recipes = Recipe.select(Recipe.name, Recipe.description, Recipe.ingredients,
                             Recipe.process, Recipe.poster_id, Recipe.id, Recipe.post_date, 
-                            Recipe.image).join(Users).where(Recipe.poster_id == current_user).order_by(Recipe.post_date.desc())
+                            Recipe.image).join(Users).where(Recipe.poster_id == current_user).order_by(
+                                Recipe.post_date.desc()).paginate(page, per_page)
     output = [recipe for recipe in recipes.dicts()]
     return jsonify(output)
 
@@ -291,6 +312,16 @@ def recipes_likes(id):
     current_user = get_jwt_identity()
     
     recipes = Like.select(Like.poster_id, Like.post_date).join(Recipe).where(Recipe.id == id).order_by(Recipe.post_date.desc())
+
+    output = [recipe for recipe in recipes.dicts()]
+    return jsonify(output)
+
+@app.route('/recipes_dislikes/<int:id>', methods=['GET'])
+@jwt_required()
+def recipes_dislikes(id):
+    current_user = get_jwt_identity()
+    
+    recipes = Dislike.select(Dislike.poster_id, Dislike.post_date).join(Recipe).where(Recipe.id == id).order_by(Recipe.post_date.desc())
 
     output = [recipe for recipe in recipes.dicts()]
     return jsonify(output)
@@ -318,8 +349,10 @@ def delete_recipe(id):
         return jsonify({'message':'Recipe ID does not Exist'}), 404
     if not Recipe.select().where((Recipe.poster_id == current_user) & (Recipe.id == id)):
             return jsonify({'message':'You are not autorized to change this recipe'}), 403
-    delete_recipe = Recipe.delete().where(Recipe.id == id) 
-    return jsonify({'result': delete_recipe.execute()}), 204
+    delete_recipe = Recipe.delete().where(Recipe.id == id)
+    data = delete_recipe.execute()
+    return jsonify({'status': data, 'message': 'Recipe successfully deleted'})
+    
 
 
 
@@ -396,15 +429,13 @@ def create_comment(id):
 @jwt_required()
 def like(id):
     current_user = get_jwt_identity()
-   
-    
-    
     if not Recipe.select().where(Recipe.id == id).exists():
         return jsonify({'Status': 'Unsuccessful', 'Message': 'Recipe ID does not Exist'}), 400
     like = Like.select().where((Like.poster_id == current_user))
     if like:
         like = Like.delete().where((Like.poster_id == current_user))
-        return jsonify({'Status': 'Successful', 'result': like.execute(), 'Message': 'Like Deleted'}), 204
+        data = like.execute()
+        return jsonify({'status': data, 'message': 'Recipe like deleted'})
     else: 
         new_like = Like.create(recipe_id = id , poster_id=current_user )
         return jsonify({'Status': 'Successful', 'Message': 'You have liked a recipe'}), 200
@@ -416,31 +447,18 @@ def dislike(id):
     current_user = get_jwt_identity()
     if not Recipe.select().where(Recipe.id == id).exists():
         return jsonify({'Status': 'Unsuccessful', 'Message': 'Recipe ID does not Exist'}), 400
+    dislike = Dislike.select().where(Dislike.recipe_id == id)
     like = Like.select().where(Like.poster_id == current_user)
     if like:
         like = Like.delete().where(Like.poster_id == current_user)
         return jsonify({'Status': 'Successful', 'result': like.execute(), 'Message': 'Like Deleted'}), 204
-    Dislike.select().where((Dislike.recipe_id == id) & (Dislike.poster_id == current_user)) 
-    if dislike:
-        remove_dislike = Dislike.delete().where(Dislike.poster_id == current_user)
-        return jsonify({'Status': 'Successful', 'result': remove_dislike.execute(), 'Message': 'dislike Deleted'}), 204
-    create_dislike = Dislike.create(recipe_id =id , poster_id=current_user )     
-    return jsonify({'Status': 'Successful', 'Message': 'Recipe has been disliked'}), 200
-    
-    
-    
-@app.route('/recipes/<int:page>', methods=['GET'])
-def get_recipe_page(page=1):
-    if request.method == 'GET':
-        per_page = 2
-        query = Recipe.select()
-    recipes = Recipe.select(Recipe.name, Recipe.description, Recipe.ingredients,
-                            Recipe.process, Recipe.poster_id, Recipe.id, Recipe.post_date, 
-                            Recipe.image).order_by(Recipe.post_date.desc()).paginate(page, per_page)
-    output = [recipe for recipe in recipes.dicts()]
-    return jsonify(output)   
-
-
+    elif dislike:
+        remove_dislike = Dislike.delete()
+        data = remove_dislike.execute()
+        return jsonify({'status': data, 'message': 'Recipe dislike deleted'})
+    else:
+        create_dislike = Dislike.create(recipe_id =id , poster_id=current_user )     
+        return jsonify({'Status': 'Successful', 'Message': 'Recipe has been disliked'}), 200
 
 
 if __name__ == '__main__':
