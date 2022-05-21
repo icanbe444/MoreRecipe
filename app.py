@@ -1,15 +1,3 @@
-# from cgi import test
-# from cgitb import text
-# from email.mime import image
-# from http.client import FORBIDDEN
-# import os
-# from crypt import methods
-# from fileinput import filename
-# from os import abort
-# from turtle import update
-# from urllib import response
-# from wsgiref import headers
-# from xml.dom.minidom import Identified
 import email
 from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, JWTManager
 from peewee import *
@@ -310,9 +298,7 @@ def get_my_recipes(page=1):
 @jwt_required()
 def recipes_likes(id):
     current_user = get_jwt_identity()
-    
-    recipes = Like.select(Like.poster_id, Like.post_date).join(Recipe).where(Recipe.id == id).order_by(Recipe.post_date.desc())
-
+    recipes = Recipe.select().join(Like).where(Like.recipe_id == id).order_by(Like.post_date.desc())
     output = [recipe for recipe in recipes.dicts()]
     return jsonify(output)
 
@@ -331,15 +317,11 @@ def recipes_dislikes(id):
 @jwt_required()
 def recipes_comments(id):
     current_user = get_jwt_identity()
-    
-    recipes = Comment.select(Comment.poster_id, Comment.post_date, 
-    Comment.text).join(Recipe).where(Recipe.id == id).order_by(Recipe.post_date.desc())
+    get_poster = Users.select()
+    recipes = Comment.select().join(Recipe).join(Users).where(Recipe.id == id).order_by(Recipe.post_date.desc())
 
     output = [recipe for recipe in recipes.dicts()]
-    return jsonify(output)
-
-
-
+    return jsonify({'Result':output})
 
 @app.route('/delete/<int:id>', methods=['DELETE'])
 @jwt_required()
@@ -353,8 +335,6 @@ def delete_recipe(id):
     data = delete_recipe.execute()
     return jsonify({'status': data, 'message': 'Recipe successfully deleted'})
     
-
-
 
 @app.route('/update/<int:id>', methods=['PUT'])
 @jwt_required()
@@ -406,7 +386,6 @@ def get_search():
         return jsonify(output)
     
    
-    
 @app.route("/comment/<int:id>", methods=['POST'])   
 @jwt_required()
 def create_comment(id):
@@ -424,41 +403,47 @@ def create_comment(id):
     return jsonify({'Status': 'Successful', 'Message':'Comment successfully posted', 'Comment': comment}), 201
 
 
-
 @app.route("/like/<int:id>", methods=['GET'])
 @jwt_required()
 def like(id):
     current_user = get_jwt_identity()
     if not Recipe.select().where(Recipe.id == id).exists():
         return jsonify({'Status': 'Unsuccessful', 'Message': 'Recipe ID does not Exist'}), 400
-    like = Like.select().where((Like.poster_id == current_user))
+    like = Like.select().where((Like.recipe_id == id) & (Like.poster_id == current_user))
+    dislike = Dislike.select().where((Dislike.recipe_id == id) & (Dislike.poster_id == current_user))
     if like:
-        like = Like.delete().where((Like.poster_id == current_user))
+        like  = Like.delete().where((Like.recipe_id == id) & (Like.poster_id == current_user))
         data = like.execute()
-        return jsonify({'status': data, 'message': 'Recipe like deleted'})
-    else: 
+        return jsonify({'Status': data, 'Message': 'Like Deleted'})
+    elif dislike:
+        dislike  = Dislike.delete().where((Dislike.poster_id == current_user) & (Dislike.recipe_id == id))
+        data = dislike.execute()
+        return jsonify({'Status': data, 'Message': 'Dislike Deleted'})
+    else:
         new_like = Like.create(recipe_id = id , poster_id=current_user )
         return jsonify({'Status': 'Successful', 'Message': 'You have liked a recipe'}), 200
 
-    
 @app.route("/dislike/<int:id>", methods=['GET'])
 @jwt_required()
 def dislike(id):
     current_user = get_jwt_identity()
     if not Recipe.select().where(Recipe.id == id).exists():
         return jsonify({'Status': 'Unsuccessful', 'Message': 'Recipe ID does not Exist'}), 400
-    dislike = Dislike.select().where(Dislike.recipe_id == id)
-    like = Like.select().where(Like.poster_id == current_user)
-    if like:
-        like = Like.delete().where(Like.poster_id == current_user)
-        return jsonify({'Status': 'Successful', 'result': like.execute(), 'Message': 'Like Deleted'}), 204
-    elif dislike:
-        remove_dislike = Dislike.delete()
-        data = remove_dislike.execute()
-        return jsonify({'status': data, 'message': 'Recipe dislike deleted'})
-    else:
-        create_dislike = Dislike.create(recipe_id =id , poster_id=current_user )     
-        return jsonify({'Status': 'Successful', 'Message': 'Recipe has been disliked'}), 200
+    like  = Like.select().where((Like.recipe_id == id) & (Like.poster_id == current_user))
+    dislike = Dislike.select().where((Dislike.recipe_id == id) & (Dislike.poster_id == current_user))
+    if dislike:
+        dislike  = Dislike.delete().where((Dislike.poster_id == current_user) & (Dislike.recipe_id == id))
+        data = dislike.execute()
+        return jsonify({'Status': data, 'Message': 'Dislike Deleted'})
+    
+    elif like:
+         like = Like.delete().where((Like.poster_id == current_user) & (Like.recipe_id == id))
+        #  data = like.execute()
+         return jsonify ({'Status': like.execute(), 'Message': 'Like Deleted'})
+   
+    else: 
+        new_dislike = Dislike.create(recipe_id = id , poster_id=current_user )
+        return jsonify({'Status': 'Successful', 'Message': 'You have disliked a recipe'}), 200
 
 
 
@@ -499,13 +484,24 @@ def update_user(username):
     return jsonify({'message':'Invalid details'}), 400
 
 
+@app.route('/top_recipe', methods=['GET'])
+def top_recipe():
+    
+    
+    # recipes = Recipe.select().join(Like).order_by(Like.recipe_id.desc())
+    query = (Recipe.select(Recipe, fn.COUNT(Like.id).alias('likes'))
+            .join(Like, JOIN.LEFT_OUTER)
+            .order_by(fn.COUNT(Like.id).desc()))
+    output = [recipe for recipe in query.dicts()]
+    
+    
+    return jsonify({'Result':output})
 
-
-
-
-
-
-
+    
+@app.route('/get_comment/<username>', methods=['GET'])
+def get_comment(username):
+    for recipe in Recipe.select().join(Users).where(Users.username == username):
+        return jsonify({'Result':Recipe.select()})
 
 if __name__ == '__main__':
     app.run(debug=True)
