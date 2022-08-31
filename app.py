@@ -1,3 +1,4 @@
+import os
 import email
 from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, JWTManager
 from peewee import *
@@ -10,32 +11,34 @@ from werkzeug.utils import secure_filename
 import cloudinary
 import cloudinary.uploader
 from flask_mail import Mail, Message
+import os
+from dotenv import load_dotenv
 
-Access_Token= "c8d45db64bc41de9e99793344c1bd78b53a500fe"
+load_dotenv()
+
+
+
 regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-UPLOAD_FOLDER = '/Users/user/PythonProject/MoreRecipe/uploads'
 ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'}
-app = Flask(__name__)
-app.config['JWT_SECRET_KEY'] = 'owoicanbe444sunkami_5#y2L"F4Q8z\n\xec]/'
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+app = Flask(__name__)
 jwt = JWTManager(app)
+JWT_SECRET_KEY= app.config['JWT_SECRET_KEY'] = 'owoicanbe444sunkami_5#y2L"F4Q8z\n\xec]/'
+mail = Mail(app)
+
 cloudinary.config(
     cloud_name="tpais",
     api_key="127237393369473",
     api_secret="-G9UJLTlf8PufwDpNo5xy4nLD_4"
 )
-#This is the config for my email sender - mailtrap
-app.config['MAIL_SERVER']='smtp.mailtrap.io'
-app.config['MAIL_PORT'] = 2525
-app.config['MAIL_USERNAME'] = '6cce44c9b47764'
-app.config['MAIL_PASSWORD'] = 'c6af206f893311'
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USE_SSL'] = False
-mail = Mail(app)
 
+MAIL_SERVER     ='smtp.mailtrap.io'
+MAIL_PORT       = 2525
+MAIL_USERNAME   = '6cce44c9b47764'
+MAIL_PASSWORD   = 'c6af206f893311'
+MAIL_USE_TLS    = True
+MAIL_USE_SSL    = False
 
-@app.before_request
 def _db_connect():
     db.connect()
 
@@ -171,7 +174,7 @@ def request_password_reset():
     if not registered_user:
         return jsonify({'message':"Account doesn't exit"}), 400
     msg = Message('Reset Password', sender =   'icanbe444@gmail.com', recipients = [email])
-    msg.body = "Hey, You have requested a password reset"
+    msg.body = "Hey,You have requested a password reset"
     mail.send(msg)
     return jsonify({'Message':'Please check your mail for further instructions',}), 200
                         
@@ -185,7 +188,6 @@ def reset_password(email):
         registered_user = Users.get(Users.email == email)
         password_pass = check_password_hash(
                 registered_user.password_harsh, password)
-        print(type(registered_user))
         if registered_user:
             
             if password_pass:
@@ -220,6 +222,9 @@ def allowed_file(filename):
 @jwt_required()
 def add_recipe():
     current_user = get_jwt_identity()
+    query = Users.select().where(Users.id == current_user)
+    email = [users.email for users in query]
+    use_email = query[0].email
     app.logger.info('in upload route')
     upload_result = None
     if 'file' not in request.files:
@@ -242,6 +247,14 @@ def add_recipe():
         url = upload_result["secure_url"]
         new_recipe = Recipe.create(name=name, description=description, ingredients=ingredients,
                                    process=process, poster_id=poster_id, image= url)
+
+       
+        # username = [users.username for users in query]
+        # use_username = query[0].username
+        msg = Message('Than you for adding to our pool of recipe', sender =   'icanbe444@gmail.com', recipients = [use_email])
+        msg.body = "Hey, You just added a new recipe."
+        mail.send(msg)
+                
         return jsonify({'Status': 'Success', 'Message':'Recipe successfully added', 'RecipeName': name})
        
 
@@ -261,7 +274,7 @@ def get_one_recipe(id):
     # query = Recipe.select().where((Recipe.poster_id == current_user) & (Recipe.id == id))
     
     if not Recipe.select().where(Recipe.id == id).exists():
-        return 'Recipe ID does not Exist', 404
+        return jsonify({'Message':'Recipe ID doesnot exist!'}), 404
     recipe = Recipe.select(Recipe.name, Recipe.description, Recipe.ingredients,
                             Recipe.process, Recipe.poster_id, Recipe.id, Recipe.post_date, 
                             Recipe.image).join(Users).where(Recipe.id == id)
@@ -330,10 +343,10 @@ def delete_recipe(id):
     if not Recipe.select().where(Recipe.id == id).exists():
         return jsonify({'message':'Recipe ID does not Exist'}), 404
     if not Recipe.select().where((Recipe.poster_id == current_user) & (Recipe.id == id)):
-            return jsonify({'message':'You are not autorized to change this recipe'}), 403
+            return jsonify({'message':'You are not autorized to delete this recipe'}), 403
     delete_recipe = Recipe.delete().where(Recipe.id == id)
     data = delete_recipe.execute()
-    return jsonify({'status': data, 'message': 'Recipe successfully deleted'})
+    return jsonify({'Items deleted': data, 'message': 'Recipe successfully deleted'})
     
 
 @app.route('/update/<int:id>', methods=['PUT'])
@@ -395,7 +408,7 @@ def create_comment(id):
         return jsonify({'Status': 'Unsuccessful', 'Message': 'Recipe ID does not Exist'}), 400
     if not comment:
         return jsonify({'Status': 'Character Error', 'Message': 'Comment session cannot be empty'}), 400
-    if len(comment) > 10:
+    if len(comment) > 100:
         return jsonify({'Status': 'Input Error', 'Message': 'You have exceeded the number of character'}), 400
     
     recipe_id = Recipe.get(id)
@@ -491,17 +504,13 @@ def top_recipe():
     # recipes = Recipe.select().join(Like).order_by(Like.recipe_id.desc())
     query = (Recipe.select(Recipe, fn.COUNT(Like.id).alias('likes'))
             .join(Like, JOIN.LEFT_OUTER)
-            .order_by(fn.COUNT(Like.id).desc()))
+            .order_by(fn.COUNT(Like.recipe_id).desc()))
     output = [recipe for recipe in query.dicts()]
     
     
     return jsonify({'Result':output})
 
     
-@app.route('/get_comment/<username>', methods=['GET'])
-def get_comment(username):
-    for recipe in Recipe.select().join(Users).where(Users.username == username):
-        return jsonify({'Result':Recipe.select()})
 
 if __name__ == '__main__':
     app.run(debug=True)
